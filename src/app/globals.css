@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: 'Syne';
+  src: url('https://fonts.googleapis.com/css2?family=Syne:wght@400..800&display=swap');
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap');
+}
+
+@theme {
+  --color-electric-yellow: #EAFF00;
+  --color-obsidian: #0A0A0A;
+  --color-silver-fox: #E0E0E0;
+  --color-hot-pink: #FF006E;
+
+  --font-syne: "Syne", sans-serif;
+  --font-space-grotesk: "Space Grotesk", sans-serif;
+  
+  --radius-none: 0px;
+  --border-width-thick: 4px;
+}
+
+@layer base {
+  :root {
+    background-color: var(--color-obsidian);
+    color: var(--color-silver-fox);
+  }
+
+  body {
+    font-family: var(--font-space-grotesk);
+    @apply bg-obsidian text-silver-fox selection:bg-electric-yellow selection:text-obsidian;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-syne);
+    @apply uppercase font-extrabold tracking-tighter;
+  }
+
+  /* Neo-Brutalist Button Utility */
+  .btn-neo {
+    @apply bg-electric-yellow text-obsidian px-6 py-3 font-bold uppercase border-4 border-obsidian 
+           shadow-[4px_4px_0px_0px_#FF006E] hover:translate-x-[2px] hover:translate-y-[2px] 
+           hover:shadow-[2px_2px_0px_0px_#FF006E] transition-all cursor-pointer;
+  }
+  
+  .card-brutal {
+    @apply border-thick border-electric-yellow p-6 bg-obsidian shadow-[8px_8px_0px_0px_rgba(234,255,0,0.2)];
+  }
+}
