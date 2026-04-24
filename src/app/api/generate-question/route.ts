@@ -1,40 +1,146 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { QuestionRequest } from "@/types/interview";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const GEMINI_MODEL = "gemini-3-flash-preview";
+
+function isQuotaError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("429") || message.toLowerCase().includes("quota");
+}
+
+function buildQuestionPrompt(request: QuestionRequest) {
+  if (request.kind === "followup") {
+    return `
+You are generating a realistic interviewer follow-up question.
+
+ROLE: ${request.role}
+COMPANY: ${request.companyTarget || "Not provided"}
+JOB DESCRIPTION:
+${request.jobDescription || "Not provided"}
+
+RESUME CONTEXT:
+${request.resumeContext || "Not provided"}
+
+CURRENT QUESTION:
+${request.currentQuestion || "Not provided"}
+
+USER ANSWER:
+${request.transcript || "Not provided"}
+
+EVALUATION SUMMARY:
+${request.evaluationSummary || "Not provided"}
+
+Return a single concise follow-up question only. Make it probing, realistic, and specific.
+`;
+  }
+
+  if (request.bulk) {
+    return `
+Generate 5 interview questions as a strict JSON array of strings.
+
+ROLE: ${request.role}
+COMPANY: ${request.companyTarget || "Not provided"}
+JOB DESCRIPTION:
+${request.jobDescription || "Not provided"}
+
+RESUME CONTEXT:
+${request.resumeContext || "Not provided"}
+
+Rules:
+- Mix behavioral, role-specific, and execution questions.
+- At least one question should test ownership.
+- At least one should test measurable impact.
+- At least one should sound like a realistic hiring manager question.
+- Return only JSON like ["Question 1", "Question 2"].
+`;
+  }
+
+  return `
+Generate one interview question only.
+
+ROLE: ${request.role}
+COMPANY: ${request.companyTarget || "Not provided"}
+JOB DESCRIPTION:
+${request.jobDescription || "Not provided"}
+
+RESUME CONTEXT:
+${request.resumeContext || "Not provided"}
+
+The question should feel realistic and tailored to the candidate's likely interview.
+Return only the question text.
+`;
+}
 
 export async function POST(req: Request) {
-  try {
-    const { role, bulk } = await req.json();
+  const request = (await req.json()) as QuestionRequest;
 
-    if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json({ error: "API Key not configured" }, { status: 500 });
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          error: "Gemini API key is not configured on the server.",
+          source: "gemini",
+        },
+        { status: 503 },
+      );
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+    const result = await model.generateContent(buildQuestionPrompt(request));
+    const text = result.response.text().trim();
 
-    const prompt = bulk 
-      ? `Generate a set of 3-5 challenging interview questions for the role: "${role}". 
-         Return them as a JSON array of strings only. Format: ["Q1", "Q2", "Q3"].`
-      : `Generate ONE challenging interview question for the role: "${role}". 
-         Return ONLY the question text.`;
+    if (request.kind === "followup") {
+      return NextResponse.json({
+        question: text.replace(/^["']|["']$/g, "").trim(),
+        source: "gemini",
+      });
+    }
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text().trim();
-
-    if (bulk) {
+    if (request.bulk) {
       try {
-        const questions = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] || text);
-        return NextResponse.json({ questions });
-      } catch (e) {
-        return NextResponse.json({ questions: [text] });
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text) as unknown;
+        const questions = Array.isArray(parsed)
+          ? parsed.filter((item): item is string => typeof item === "string")
+          : [];
+
+        return NextResponse.json({
+          questions: questions.length > 0 ? questions : [text],
+          source: "gemini",
+        });
+      } catch {
+        return NextResponse.json({ questions: [text], source: "gemini" });
       }
     }
 
-    return NextResponse.json({ question: text });
+    return NextResponse.json({
+      question: text.replace(/^["']|["']$/g, "").trim(),
+      source: "gemini",
+    });
   } catch (error: any) {
-    console.error("Question Generation Error:", error);
-    return NextResponse.json({ error: "Failed to generate question" }, { status: 500 });
+    console.error("--- GEMINI DEBUG START ---");
+    console.error("Error Status:", error?.status);
+    console.error("Error Message:", error?.message);
+    console.error("Error Details:", JSON.stringify(error?.response?.data || {}, null, 2));
+    console.error("--- GEMINI DEBUG END ---");
+
+    if (isQuotaError(error)) {
+      return NextResponse.json(
+        {
+          error:
+            "Gemini question generation is temporarily unavailable because the current API key has hit quota limits. Add a new Gemini API key or retry after the quota window resets.",
+          source: "gemini",
+        },
+        { status: 429 },
+      );
+    }
+
+    const message =
+      error instanceof Error ? error.message : "Failed to generate question";
+
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
