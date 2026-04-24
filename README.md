@@ -1,51 +1,74 @@
 # HiredBabe 🎤✨
-### The AI-Powered Interview Mentor for Pakistani Talent
+### The Elite AI-Powered Interview Mentor for Global Talent
 
-**HiredBabe** is a cutting-edge, multimodal interview simulation platform designed to bridge the gap between "knowing the answer" and "nailing the delivery." Built specifically for the **#AISeekho #VibeKaregaPakistan** program by Google, HiredBabe uses advanced AI to help users master their interview presence through real-time feedback and mentorship.
+**HiredBabe** is a cutting-edge, multimodal interview simulation platform designed to bridge the gap between "knowing the answer" and "nailing the delivery." Built with a neo-brutalist aesthetic and powered by **Google Gemini 3.1 Flash**, HiredBabe transforms your device into a personal career coach that tracks your progress, analyzes your "vibe," and perfects your speech.
 
 ---
 
 ## 🌟 Vision
-In Pakistan's growing tech market, talent is abundant, but communication barriers often hinder success. **HiredBabe** empowers developers, designers, and professionals to practice in a high-fidelity environment, ensuring they enter every interview with confidence and clarity.
+In today's competitive market, communication is the ultimate differentiator. **HiredBabe** empowers professionals to practice in a high-fidelity environment, ensuring they enter every interview with confidence, clarity, and a data-backed strategy for success.
 
 ## 🚀 Key Features
-- **Multimodal Analysis:** Analyzes videomicro-expressions, audio tonality, and speech transcripts simultaneously using Google's Gemini 3 Flash.
-- **Privacy-First Hardware Control:** Physical camera and microphone tracks are explicitly terminated when not in use, ensuring 100% user privacy.
-- **Vibe Scoring:** Objective metrics on confidence, pacing, and filler-word usage.
-- **STAR Structure Check:** Automated analysis of Situation, Task, Action, and Result in behavioral answers.
-- **AI Perfect Answers:** Get a "Perfect Example Answer" tailored to your specific interview question after every response.
-- **Bulk AI Generation:** Instantaneously generate technical or behavioral interview sets tailored to any role (e.g., MERN Developer, Product Manager).
-- **Mission Control:** A comprehensive setup screen allowing users to choose from a deep Knowledge Base or custom question sets.
+
+### 1. Multimodal AI Analysis
+Analyzes micro-expressions, audio tonality, and speech transcripts simultaneously using **Gemini 3.1 Flash Lite**. Get real-time feedback on your confidence, pacing, and technical depth.
+
+### 2. Personal Career Dashboard
+Your interview history is now persistent. Track your growth across multiple sessions, visualize your "Skill Radar," and identify patterns in your weaknesses through automated trend analysis.
+
+### 3. Secure Authentication & Persistence
+Powered by **Supabase Auth**, your data is encrypted and accessible across devices. Guest users can practice instantly, while logged-in users unlock career-long analytics.
+
+### 4. AI Perfect Answers & STAR Check
+- **STAR Structure Check:** Automated analysis of Situation, Task, Action, and Result.
+- **AI Perfect Answers:** Receive a tailored "Perfect Answer" after every response to learn exactly how to improve.
+
+### 5. Custom Mission Control
+Tailor your session with specific Job Descriptions, Resume highlights, and role-specific tracks. Choose between **Coach Mode** for guided help or **Real Round** for a high-pressure simulation.
 
 ## 🛠️ Tech Stack
 - **Framework:** Next.js 16 (App Router + TypeScript)
-- **Styling:** Tailwind CSS v4 (Neo-Brutalist/Cyberpunk Aesthetic)
-- **AI Engine:** Google Gemini 3 Flash (Multimodal)
+- **Styling:** Tailwind CSS v4 (Neo-Brutalist Aesthetic)
+- **Database & Auth:** Supabase (PostgreSQL + RLS)
+- **AI Engine:** Google Gemini 3.1 Flash Lite
+- **Email/OTP:** Brevo SMTP
 - **Speech:** Web Speech API (Neural Voice Synthesis & Real-time Recognition)
-- **Hardware Management:** Custom React Video/Audio Stream Hooks
 
 ## 📦 Getting Started
+
+### 1. Prerequisites
+- Node.js 20+
+- A Supabase Project
+- A Google Gemini API Key
+
+### 2. Setup
 1. **Clone the repository**
 2. **Install dependencies:**
    ```bash
    npm install
    ```
 3. **Set up Environment Variables:**
-   Create a `.env.local` file and add your Google Generative AI API Key:
+   Create a `.env.local` file:
    ```env
-   GEMINI_API_KEY=your_api_key_here
+   GEMINI_API_KEY=your_gemini_key
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   BREVO_API_KEY=your_brevo_key
    ```
-4. **Run the development server:**
-   ```bash
-   npm run dev
-   ```
-5. **Open [http://localhost:3000](http://localhost:3000)** and start your session!
+4. **Run Database Migrations:**
+   Copy the contents of `supabase-migration.sql` into your Supabase SQL Editor and run it to initialize your tables and RLS policies.
+
+### 3. Launch
+```bash
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) and start nailing your interviews!
 
 ---
 
 ## 👩‍💻 Author
 **Anila Nawaz**  
-*Passionate about building AI solutions that empower the next generation of Pakistani talent.*
+*Passionate about building AI solutions that empower the next generation of global talent.*
 
 ---
 

@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { SYSTEM_PROMPT } from "@/services/gemini-service";
 import { InterviewEvaluation, InterviewSession } from "@/types/interview";
 
-const GEMINI_MODEL = "gemini-3-flash-preview";
+const GEMINI_MODEL = "gemini-3.1-flash-lite-preview";
 
 const noResponseEvaluation: InterviewEvaluation = {
   has_response: false,
@@ -232,8 +232,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const message =
-      error instanceof Error ? error.message : "Failed to evaluate interview";
+    const message = error instanceof Error ? error.message : "Failed to evaluate interview";
+    const isServiceBusy = message.includes("503") || message.includes("Service Unavailable") || message.includes("high demand");
+
+    if (isServiceBusy) {
+      return NextResponse.json(
+        {
+          error: "HiredBabe is getting a lot of love right now! Our AI coach is currently busy helping other candidates. Please wait a minute and try again.",
+        },
+        { status: 503 },
+      );
+    }
 
     return NextResponse.json({ error: message }, { status: 500 });
   }

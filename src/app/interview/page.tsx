@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import VideoRecorder from "@/components/interview/VideoRecorder";
 import { evaluateInterview } from "@/services/gemini-service";
@@ -10,6 +10,9 @@ import {
   PressureMode,
 } from "@/types/interview";
 import interviewKnowledgeBase from "../../../interviewKnowledgeBase";
+import { createClient } from "@/lib/supabase/client";
+import { createSession, saveAnswer, finalizeSession } from "@/services/session-service";
+import type { User, AuthChangeEvent, Session } from "@supabase/supabase-js";
 
 type QueueItem = {
   id: string;
@@ -55,7 +58,6 @@ type VideoRecorderHandle = {
   captureFrame: () => string | null;
 };
 
-const STORAGE_KEY = "hiredbabe.session-history.v2";
 const QUESTION_STORAGE_KEY = "hiredbabe.question-draft.v2";
 
 const roleTracks = [
@@ -147,6 +149,12 @@ export default function InterviewPage() {
   const [isGeneratingFollowUp, setIsGeneratingFollowUp] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
+  /* ── Auth state for cloud persistence ─────────────── */
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const supabaseRef = useMemo(() => createClient(), []);
+  const activeSessionIdRef = useRef<string | null>(null);
+  const sessionAnswerScoresRef = useRef<{ overall_score: number }[]>([]);
+
   const [interviewMode, setInterviewMode] = useState<InterviewMode>("video");
   const [pressureMode, setPressureMode] = useState<PressureMode>("coach");
   const [strictNoRetry, setStrictNoRetry] = useState(false);
@@ -180,37 +188,38 @@ export default function InterviewPage() {
   const startedAtRef = useRef<number | null>(null);
   const autoStopTriggeredRef = useRef(false);
 
-  // Hydration fix: load from localStorage after mount
+  // Hydration fix: load question drafts from localStorage after mount
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setIsMounted(true);
+    // Delay mount to avoid sync setState warning in some environments
+    Promise.resolve().then(() => setIsMounted(true));
 
     try {
       const rawQuestions = window.localStorage.getItem(QUESTION_STORAGE_KEY);
       if (rawQuestions) {
         const parsed = JSON.parse(rawQuestions);
         if (Array.isArray(parsed)) {
-          setQuestionQueue(parsed);
-        }
-      }
-
-      const rawHistory = window.localStorage.getItem(STORAGE_KEY);
-      if (rawHistory) {
-        const parsed = JSON.parse(rawHistory);
-        if (Array.isArray(parsed)) {
-          setHistory(parsed);
+          Promise.resolve().then(() => setQuestionQueue(parsed));
         }
       }
     } catch (err) {
       console.error("Failed to load local state:", err);
     }
-  }, []);
 
-  useEffect(() => {
-    if (isMounted) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-    }
-  }, [history, isMounted]);
+    /* Load auth user */
+    const loadUser = async () => {
+      const { data } = await supabaseRef.auth.getUser();
+      if (data?.user) {
+        setAuthUser(data.user);
+      }
+    };
+    loadUser();
+
+    const { data: { subscription } } = supabaseRef.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
+      setAuthUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabaseRef]);
 
   useEffect(() => {
     if (isMounted) {
@@ -327,6 +336,18 @@ export default function InterviewPage() {
   const persistResult = (result: SessionResult) => {
     setCurrentSessionResults((previous) => [result, ...previous]);
     setHistory((previous) => [result, ...previous].slice(0, 50));
+
+    /* ── Cloud save for logged-in users ─────────────── */
+    if (authUser && activeSessionIdRef.current) {
+      sessionAnswerScoresRef.current.push({ overall_score: result.evaluation.overall_score });
+      saveAnswer({
+        sessionId: activeSessionIdRef.current,
+        userId: authUser.id,
+        question: result.question,
+        transcript: result.transcript,
+        evaluation: result.evaluation,
+      }).catch((err) => console.error("Cloud save failed:", err));
+    }
   };
 
   const addQuestion = (item: QueueItem) => {
@@ -462,7 +483,7 @@ export default function InterviewPage() {
     }
   };
 
-  const startInterview = () => {
+  const startInterview = async () => {
     if (questionQueue.length === 0) {
       alert("Please add at least one question to the queue.");
       return;
@@ -475,6 +496,20 @@ export default function InterviewPage() {
     setServiceNotice(null);
     setTranscript("");
     setIsStarted(true);
+
+    /* ── Create cloud session for logged-in users ──── */
+    activeSessionIdRef.current = null;
+    sessionAnswerScoresRef.current = [];
+    if (authUser) {
+      const sessionId = await createSession({
+        userId: authUser.id,
+        roleTarget,
+        companyTarget,
+        interviewMode,
+        pressureMode,
+      });
+      activeSessionIdRef.current = sessionId;
+    }
   };
 
   const handlePermissionsAndStart = async () => {
@@ -617,9 +652,14 @@ export default function InterviewPage() {
     }
   };
 
-  const handleTimerElapsed = useEffectEvent(() => {
-    void endInterview();
+  const endInterviewRef = useRef(endInterview);
+  useEffect(() => {
+    endInterviewRef.current = endInterview;
   });
+
+  const handleTimerElapsed = () => {
+    void endInterviewRef.current();
+  };
 
   useEffect(() => {
     if (!isRecording) {
@@ -664,6 +704,15 @@ export default function InterviewPage() {
     recognitionRef.current?.stop();
     videoRef.current?.stopStream();
     window.speechSynthesis.cancel();
+
+    /* ── Finalize cloud session ─────────────────────── */
+    if (activeSessionIdRef.current && sessionAnswerScoresRef.current.length > 0) {
+      finalizeSession(activeSessionIdRef.current, sessionAnswerScoresRef.current)
+        .catch((err) => console.error("Session finalize failed:", err));
+    }
+    activeSessionIdRef.current = null;
+    sessionAnswerScoresRef.current = [];
+
     setIsStarted(false);
     setIsReady(false);
     setIsRecording(false);
@@ -680,7 +729,7 @@ export default function InterviewPage() {
   if (!isStarted) {
     return (
       <div className="min-h-screen bg-obsidian px-3 py-8 text-silver-fox sm:px-5 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+        <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1.25fr_0.75fr]">
           <section className="card-brutal space-y-8 bg-white/5 p-4 sm:p-6 lg:p-10">
             <div className="space-y-3">
               <p className="text-[10px] font-black uppercase tracking-[0.35em] text-hot-pink">
@@ -800,7 +849,7 @@ export default function InterviewPage() {
                       <div className="mb-2 text-[10px] font-black uppercase tracking-[0.25em] text-silver-fox/70">
                         Answer Timer
                       </div>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                         {[60, 90, 120].map((seconds) => (
                           <button
                             key={seconds}
@@ -841,7 +890,7 @@ export default function InterviewPage() {
               </div>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+            <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
               <div className="space-y-5">
                 <Field label="Question Builder">
                   <div className="space-y-3">
@@ -1055,7 +1104,7 @@ export default function InterviewPage() {
 
   return (
     <div className="min-h-screen bg-obsidian px-3 py-4 text-silver-fox sm:px-5 lg:px-8">
-      <div className="mx-auto grid max-w-7xl gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1.15fr_0.85fr]">
         <div className="space-y-5">
           <header className="card-brutal bg-white/5 p-4 sm:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -1071,7 +1120,7 @@ export default function InterviewPage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 text-center text-xs uppercase sm:min-w-80">
+              <div className="grid grid-cols-2 gap-2 text-center text-[10px] uppercase sm:grid-cols-3 sm:text-xs md:min-w-80">
                 <MetricCard label="Question" value={`${currentQuestionIndex + 1}/${questionQueue.length}`} compact />
                 <MetricCard label="Timer" value={`${remainingTime}s`} compact />
                 <MetricCard
@@ -1083,7 +1132,7 @@ export default function InterviewPage() {
             </div>
           </header>
 
-          <div className="relative overflow-hidden rounded-none border-4 border-electric-yellow bg-black shadow-[10px_10px_0px_0px_#FF006E]">
+          <div className="relative overflow-hidden rounded-none border-4 border-electric-yellow bg-black shadow-[4px_4px_0px_0px_#FF006E] sm:shadow-[10px_10px_0px_0px_#FF006E]">
             {interviewMode === "video" ? (
               <VideoRecorder ref={videoRef} isRecording={isRecording} />
             ) : (
@@ -1161,13 +1210,30 @@ export default function InterviewPage() {
                 {transcript || "Your spoken answer will appear here as the interview runs."}
               </p>
               {serviceNotice ? (
-                <div className="mt-4 border border-electric-yellow bg-electric-yellow/10 p-3 text-sm leading-6 text-silver-fox">
-                  {serviceNotice}
+                <div className="mt-4 border-2 border-hot-pink bg-hot-pink/10 p-4 shadow-[4px_4px_0px_0px_#FF006E]">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-hot-pink text-[10px] font-black text-white">
+                      !
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-hot-pink">
+                        Coach&apos;s Note
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-silver-fox">
+                        {serviceNotice}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               ) : null}
               {responseNotice ? (
-                <div className="mt-4 border border-hot-pink bg-hot-pink/10 p-3 text-sm leading-6 text-silver-fox">
-                  {responseNotice}
+                <div className="mt-4 border-2 border-electric-yellow bg-electric-yellow/5 p-4 shadow-[4px_4px_0px_0px_#EAFF00]">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-electric-yellow">
+                    System Message
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-silver-fox">
+                    {responseNotice}
+                  </p>
                 </div>
               ) : null}
               <div className="mt-4 grid grid-cols-2 gap-2 text-xs uppercase sm:grid-cols-4">
@@ -1306,12 +1372,22 @@ export default function InterviewPage() {
                   <ListPanel title="Weakness Tags" items={evaluation.weakness_tags} pill />
                 </div>
               ) : serviceNotice ? (
-                <div className="border border-electric-yellow bg-electric-yellow/10 p-4 text-sm leading-7 text-silver-fox">
-                  {serviceNotice}
+                <div className="border-2 border-hot-pink bg-hot-pink/10 p-4 shadow-[4px_4px_0px_0px_#FF006E]">
+                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-hot-pink mb-1">
+                     Notice
+                   </p>
+                   <p className="text-sm leading-6 text-silver-fox">
+                     {serviceNotice}
+                   </p>
                 </div>
               ) : responseNotice ? (
-                <div className="border border-hot-pink bg-hot-pink/10 p-4 text-sm leading-7 text-silver-fox">
-                  {responseNotice}
+                <div className="border-2 border-electric-yellow bg-electric-yellow/5 p-4 shadow-[4px_4px_0px_0px_#EAFF00]">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-electric-yellow mb-1">
+                    Status
+                  </p>
+                  <p className="text-sm leading-6 text-silver-fox">
+                    {responseNotice}
+                  </p>
                 </div>
               ) : (
                 <p className="py-8 text-sm leading-7 text-silver-fox/60">

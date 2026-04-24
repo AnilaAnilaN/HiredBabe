@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { QuestionRequest } from "@/types/interview";
 
-const GEMINI_MODEL = "gemini-3-flash-preview";
+const GEMINI_MODEL = "gemini-3.1-flash-lite-preview";
 
 function isQuotaError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
@@ -139,8 +139,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const message =
-      error instanceof Error ? error.message : "Failed to generate question";
+    const message = error instanceof Error ? error.message : "Failed to generate question";
+    const isServiceBusy = message.includes("503") || message.includes("Service Unavailable") || message.includes("high demand");
+
+    if (isServiceBusy) {
+      return NextResponse.json(
+        {
+          error: "HiredBabe is getting a lot of love right now! Our AI coach is currently busy helping other candidates. Please wait a minute and try again.",
+          source: "gemini",
+        },
+        { status: 503 },
+      );
+    }
 
     return NextResponse.json({ error: message }, { status: 500 });
   }

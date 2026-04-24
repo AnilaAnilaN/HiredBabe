@@ -36,4 +36,36 @@
   .card-brutal {
     @apply border-thick border-electric-yellow p-6 bg-obsidian shadow-[8px_8px_0px_0px_rgba(234,255,0,0.2)];
   }
+
+  /* Auth modal entrance animation */
+  .auth-modal-enter {
+    animation: modalSlideIn 0.25s ease-out;
+  }
+
+  /* User menu dropdown animation */
+  .user-menu-enter {
+    animation: menuSlideDown 0.15s ease-out;
+  }
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes menuSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
