@@ -214,11 +214,12 @@ export async function POST(req: Request) {
     const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(text);
 
     return NextResponse.json(sanitizeEvaluation(parsed));
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { status?: number; message?: string; response?: { data?: unknown } };
     console.error("--- GEMINI DEBUG START ---");
-    console.error("Error Status:", error?.status);
-    console.error("Error Message:", error?.message);
-    console.error("Error Details:", JSON.stringify(error?.response?.data || {}, null, 2));
+    console.error("Error Status:", err?.status);
+    console.error("Error Message:", err?.message);
+    console.error("Error Details:", JSON.stringify(err?.response?.data || {}, null, 2));
     console.error("--- GEMINI DEBUG END ---");
 
     if (isQuotaError(error)) {

@@ -182,19 +182,24 @@ export default function InterviewPage() {
 
   // Hydration fix: load from localStorage after mount
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsMounted(true);
 
     try {
       const rawQuestions = window.localStorage.getItem(QUESTION_STORAGE_KEY);
       if (rawQuestions) {
         const parsed = JSON.parse(rawQuestions);
-        if (Array.isArray(parsed)) setQuestionQueue(parsed);
+        if (Array.isArray(parsed)) {
+          setQuestionQueue(parsed);
+        }
       }
 
       const rawHistory = window.localStorage.getItem(STORAGE_KEY);
       if (rawHistory) {
         const parsed = JSON.parse(rawHistory);
-        if (Array.isArray(parsed)) setHistory(parsed);
+        if (Array.isArray(parsed)) {
+          setHistory(parsed);
+        }
       }
     } catch (err) {
       console.error("Failed to load local state:", err);
